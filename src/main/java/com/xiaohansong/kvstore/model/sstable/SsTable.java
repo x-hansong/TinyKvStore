@@ -12,6 +12,7 @@ import org.slf4j.LoggerFactory;
 import java.io.IOException;
 import java.io.RandomAccessFile;
 import java.nio.charset.StandardCharsets;
+import java.util.LinkedList;
 import java.util.Optional;
 import java.util.TreeMap;
 
@@ -51,6 +52,61 @@ public class SsTable {
         SsTable ssTable = new SsTable(filePath, 0);
         ssTable.restoreFromFile();
         return ssTable;
+    }
+
+    public String query(String key) {
+        try {
+            LinkedList<Position> sparseKeyPositionList = new LinkedList<>();
+
+            Position lastSmallPosition = null;
+            Position firstBigPosition = null;
+
+            for (String k : sparseIndex.keySet()) {
+                if (k.compareTo(key) <= 0) {
+                    lastSmallPosition = sparseIndex.get(k);
+                } else {
+                    //添加
+                    firstBigPosition = sparseIndex.get(k);
+                    break;
+                }
+            }
+            if (lastSmallPosition != null) {
+                sparseKeyPositionList.add(lastSmallPosition);
+            }
+            if (firstBigPosition != null) {
+                sparseKeyPositionList.add(firstBigPosition);
+            }
+            if (sparseKeyPositionList.size() == 0) {
+                return null;
+            }
+            LoggerUtil.debug(LOGGER, "[SsTable][restoreFromFile][sparseKeyPositionList]: {}", sparseKeyPositionList);
+            Position firstKeyPosition = sparseKeyPositionList.getFirst();
+            Position lastKeyPosition = sparseKeyPositionList.getLast();
+            long start = 0;
+            long len = 0;
+            start = firstKeyPosition.getStart();
+            if (firstKeyPosition.equals(lastKeyPosition)) {
+                len = firstKeyPosition.getLen();
+            } else {
+                len = lastKeyPosition.getStart() + lastKeyPosition.getLen() - start;
+            }
+            byte[] dataPart = new byte[(int) len];
+            tableFile.seek(start);
+            tableFile.read(dataPart);
+            int pStart = 0;
+            for (Position position: sparseKeyPositionList) {
+                JSONObject dataPartJson = JSONObject.parseObject(new String(dataPart, pStart, (int)position.getLen()));
+                LoggerUtil.debug(LOGGER, "[SsTable][restoreFromFile][dataPartJson]: {}", dataPartJson);
+                if (dataPartJson.containsKey(key)) {
+                    return dataPartJson.getString(key);
+                }
+                pStart += (int) position.getLen();
+            }
+            return null;
+        } catch (Throwable t) {
+            throw new RuntimeException(t);
+        }
+
     }
 
     private void restoreFromFile() {
