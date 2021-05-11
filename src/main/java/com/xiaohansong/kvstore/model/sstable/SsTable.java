@@ -4,6 +4,8 @@ import com.alibaba.fastjson.JSONObject;
 import com.alibaba.fastjson.TypeReference;
 import com.xiaohansong.kvstore.model.Position;
 import com.xiaohansong.kvstore.model.command.Command;
+import com.xiaohansong.kvstore.model.command.CommandTypeEnum;
+import com.xiaohansong.kvstore.model.command.RmCommand;
 import com.xiaohansong.kvstore.model.command.SetCommand;
 import com.xiaohansong.kvstore.utils.LoggerUtil;
 import org.slf4j.Logger;
@@ -18,6 +20,8 @@ import java.util.TreeMap;
 
 public class SsTable {
 
+    public static final String TYPE = "type";
+    public static final String VALUE = "value";
     private Logger LOGGER = LoggerFactory.getLogger(SsTable.class);
 
     private TableMetaInfo tableMetaInfo;
@@ -61,6 +65,7 @@ public class SsTable {
             Position lastSmallPosition = null;
             Position firstBigPosition = null;
 
+            //从稀疏索引中找到最后一个小于key的位置，以及第一个大于key的位置
             for (String k : sparseIndex.keySet()) {
                 if (k.compareTo(key) <= 0) {
                     lastSmallPosition = sparseIndex.get(k);
@@ -90,15 +95,21 @@ public class SsTable {
             } else {
                 len = lastKeyPosition.getStart() + lastKeyPosition.getLen() - start;
             }
+            //key如果存在必定位于区间内，所以只需要读取区间内的数据，减少io
             byte[] dataPart = new byte[(int) len];
             tableFile.seek(start);
             tableFile.read(dataPart);
             int pStart = 0;
-            for (Position position: sparseKeyPositionList) {
-                JSONObject dataPartJson = JSONObject.parseObject(new String(dataPart, pStart, (int)position.getLen()));
+            for (Position position : sparseKeyPositionList) {
+                JSONObject dataPartJson = JSONObject.parseObject(new String(dataPart, pStart, (int) position.getLen()));
                 LoggerUtil.debug(LOGGER, "[SsTable][restoreFromFile][dataPartJson]: {}", dataPartJson);
                 if (dataPartJson.containsKey(key)) {
-                    return dataPartJson.getString(key);
+                    JSONObject value = dataPartJson.getJSONObject(key);
+                    if (value.getString(TYPE).equals(CommandTypeEnum.SET.name())) {
+                        return value.getString(VALUE);
+                    } else if (value.getString(TYPE).equals(CommandTypeEnum.RM.name())) {
+                        return null;
+                    }
                 }
                 pStart += (int) position.getLen();
             }
@@ -138,7 +149,11 @@ public class SsTable {
                 //只处理set命令，rm命令可以忽略
                 if (command instanceof SetCommand) {
                     SetCommand set = (SetCommand) command;
-                    partData.put(set.getKey(), set.getValue());
+                    partData.put(set.getKey(), set);
+                }
+                if (command instanceof RmCommand) {
+                    RmCommand rm = (RmCommand) command;
+                    partData.put(rm.getKey(), rm);
                 }
 
                 //达到分段数量，开始写入数据段

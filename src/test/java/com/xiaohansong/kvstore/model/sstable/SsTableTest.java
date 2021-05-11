@@ -17,8 +17,8 @@ class SsTableTest {
             SetCommand setCommand = new SetCommand("key" + i, "value" + i);
             index.put(setCommand.getKey(), setCommand);
         }
-        index.put("key100", new RmCommand("key100"));
         index.put("key100", new SetCommand("key100", "value100"));
+        index.put("key100", new RmCommand("key100"));
         SsTable ssTable = SsTable.createFromIndex("test.txt", 3, index);
     }
 

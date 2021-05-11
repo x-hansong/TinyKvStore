@@ -1,13 +1,19 @@
 package com.xiaohansong.kvstore.model.command;
 
-import lombok.AllArgsConstructor;
-import lombok.Data;
+import lombok.Getter;
+import lombok.Setter;
 
-@Data
-@AllArgsConstructor
-public class SetCommand implements Command{
+@Getter
+@Setter
+public class SetCommand extends AbstractCommand {
 
     private String key;
 
     private String value;
+
+    public SetCommand(String key, String value) {
+        super(CommandTypeEnum.SET);
+        this.key = key;
+        this.value = value;
+    }
 }
