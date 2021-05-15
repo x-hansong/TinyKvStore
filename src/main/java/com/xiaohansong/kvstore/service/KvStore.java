@@ -1,13 +1,30 @@
 package com.xiaohansong.kvstore.service;
 
-import com.xiaohansong.kvstore.model.Result;
+import java.io.Closeable;
 
-public interface KvStore {
+/**
+ * Kv存储接口定义
+ */
+public interface KvStore extends Closeable {
 
+    /**
+     * 保存数据
+     * @param key
+     * @param value
+     */
     void set(String key, String value);
 
+    /**
+     * 查询数据
+     * @param key
+     * @return
+     */
     String get(String key);
 
+    /**
+     * 删除数据
+     * @param key
+     */
     void rm(String key);
 
 }

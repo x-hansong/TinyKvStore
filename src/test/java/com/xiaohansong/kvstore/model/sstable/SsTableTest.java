@@ -3,15 +3,14 @@ package com.xiaohansong.kvstore.model.sstable;
 import com.xiaohansong.kvstore.model.command.Command;
 import com.xiaohansong.kvstore.model.command.RmCommand;
 import com.xiaohansong.kvstore.model.command.SetCommand;
-import com.xiaohansong.kvstore.model.sstable.SsTable;
-import org.junit.jupiter.api.Test;
+import org.junit.Test;
 
 import java.util.TreeMap;
 
-class SsTableTest {
+public class SsTableTest {
 
     @Test
-    void createFromIndex() {
+    public void createFromIndex() {
         TreeMap<String, Command> index = new TreeMap<>();
         for (int i = 0; i < 10; i++) {
             SetCommand setCommand = new SetCommand("key" + i, "value" + i);
@@ -23,12 +22,7 @@ class SsTableTest {
     }
 
     @Test
-    void createFromFile() {
-        SsTable ssTable = SsTable.createFromFile("test.txt");
-    }
-
-    @Test
-    void query() {
+    public void query() {
         SsTable ssTable = SsTable.createFromFile("test.txt");
         System.out.println(ssTable.query("key0"));
         System.out.println(ssTable.query("key5"));

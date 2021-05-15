@@ -4,13 +4,14 @@ import com.alibaba.fastjson.JSONObject;
 import com.alibaba.fastjson.TypeReference;
 import com.xiaohansong.kvstore.model.Position;
 import com.xiaohansong.kvstore.model.command.Command;
-import com.xiaohansong.kvstore.model.command.CommandTypeEnum;
 import com.xiaohansong.kvstore.model.command.RmCommand;
 import com.xiaohansong.kvstore.model.command.SetCommand;
+import com.xiaohansong.kvstore.utils.ConvertUtil;
 import com.xiaohansong.kvstore.utils.LoggerUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.io.Closeable;
 import java.io.IOException;
 import java.io.RandomAccessFile;
 import java.nio.charset.StandardCharsets;
@@ -18,27 +19,46 @@ import java.util.LinkedList;
 import java.util.Optional;
 import java.util.TreeMap;
 
-public class SsTable {
+/**
+ * 排序字符串表
+ */
+public class SsTable implements Closeable {
 
-    public static final String TYPE = "type";
-    public static final String VALUE = "value";
-    private Logger LOGGER = LoggerFactory.getLogger(SsTable.class);
+    public static final String RW = "rw";
 
+    private final Logger LOGGER = LoggerFactory.getLogger(SsTable.class);
+
+    /**
+     * 表索引信息
+     */
     private TableMetaInfo tableMetaInfo;
 
+    /**
+     * 字段稀疏索引
+     */
     private TreeMap<String, Position> sparseIndex;
 
+    /**
+     * 文件句柄
+     */
     private final RandomAccessFile tableFile;
 
+    /**
+     * 文件路径
+     */
     private final String filePath;
 
-
+    /**
+     *
+     * @param filePath 表文件路径
+     * @param partSize 数据分区大小
+     */
     private SsTable(String filePath, int partSize) {
         this.tableMetaInfo = new TableMetaInfo();
         this.tableMetaInfo.setPartSize(partSize);
         this.filePath = filePath;
         try {
-            this.tableFile = new RandomAccessFile(filePath, "rw");
+            this.tableFile = new RandomAccessFile(filePath, RW);
             tableFile.seek(0);
         } catch (Throwable t) {
             throw new RuntimeException(t);
@@ -46,19 +66,36 @@ public class SsTable {
         sparseIndex = new TreeMap<>();
     }
 
+    /**
+     * 从内存表中构建ssTable
+     * @param filePath
+     * @param partSize
+     * @param index
+     * @return
+     */
     public static SsTable createFromIndex(String filePath, int partSize, TreeMap<String, Command> index) {
         SsTable ssTable = new SsTable(filePath, partSize);
         ssTable.initFromIndex(index);
         return ssTable;
     }
 
+    /**
+     * 从文件中构建ssTable
+     * @param filePath
+     * @return
+     */
     public static SsTable createFromFile(String filePath) {
         SsTable ssTable = new SsTable(filePath, 0);
         ssTable.restoreFromFile();
         return ssTable;
     }
 
-    public String query(String key) {
+    /**
+     * 从ssTable中查询数据
+     * @param key
+     * @return
+     */
+    public Command query(String key) {
         try {
             LinkedList<Position> sparseKeyPositionList = new LinkedList<>();
 
@@ -70,7 +107,6 @@ public class SsTable {
                 if (k.compareTo(key) <= 0) {
                     lastSmallPosition = sparseIndex.get(k);
                 } else {
-                    //添加
                     firstBigPosition = sparseIndex.get(k);
                     break;
                 }
@@ -100,16 +136,13 @@ public class SsTable {
             tableFile.seek(start);
             tableFile.read(dataPart);
             int pStart = 0;
+            //读取分区数据
             for (Position position : sparseKeyPositionList) {
                 JSONObject dataPartJson = JSONObject.parseObject(new String(dataPart, pStart, (int) position.getLen()));
                 LoggerUtil.debug(LOGGER, "[SsTable][restoreFromFile][dataPartJson]: {}", dataPartJson);
                 if (dataPartJson.containsKey(key)) {
                     JSONObject value = dataPartJson.getJSONObject(key);
-                    if (value.getString(TYPE).equals(CommandTypeEnum.SET.name())) {
-                        return value.getString(VALUE);
-                    } else if (value.getString(TYPE).equals(CommandTypeEnum.RM.name())) {
-                        return null;
-                    }
+                    return ConvertUtil.jsonToCommand(value);
                 }
                 pStart += (int) position.getLen();
             }
@@ -120,10 +153,15 @@ public class SsTable {
 
     }
 
+    /**
+     * 从文件中恢复ssTable到内存
+     */
     private void restoreFromFile() {
         try {
+            //先读取索引
             TableMetaInfo tableMetaInfo = TableMetaInfo.readFromFile(tableFile);
             LoggerUtil.debug(LOGGER, "[SsTable][restoreFromFile][tableMetaInfo]: {}", tableMetaInfo);
+            //读取稀疏索引
             byte[] indexBytes = new byte[(int) tableMetaInfo.getIndexLen()];
             tableFile.seek(tableMetaInfo.getIndexStart());
             tableFile.read(indexBytes);
@@ -141,6 +179,10 @@ public class SsTable {
 
     }
 
+    /**
+     * 从内存表转化为ssTable
+     * @param index
+     */
     private void initFromIndex(TreeMap<String, Command> index) {
         try {
             JSONObject partData = new JSONObject(true);
@@ -183,6 +225,11 @@ public class SsTable {
         }
     }
 
+    /**
+     * 将数据分区写入文件
+     * @param partData
+     * @throws IOException
+     */
     private void writeDataPart(JSONObject partData) throws IOException {
         byte[] partDataBytes = partData.toJSONString().getBytes(StandardCharsets.UTF_8);
         long start = tableFile.getFilePointer();
@@ -192,5 +239,10 @@ public class SsTable {
         Optional<String> firstKey = partData.keySet().stream().findFirst();
         firstKey.ifPresent(s -> sparseIndex.put(s, new Position(start, partDataBytes.length)));
         partData.clear();
+    }
+
+    @Override
+    public void close() throws IOException {
+        tableFile.close();
     }
 }

@@ -4,6 +4,9 @@ import lombok.Data;
 
 import java.io.RandomAccessFile;
 
+/**
+ * ssTable索引信息
+ */
 @Data
 public class TableMetaInfo {
 
