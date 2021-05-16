@@ -188,11 +188,12 @@ public class SsTable implements Closeable {
             JSONObject partData = new JSONObject(true);
             tableMetaInfo.setDataStart(tableFile.getFilePointer());
             for (Command command : index.values()) {
-                //只处理set命令，rm命令可以忽略
+                //处理set命令
                 if (command instanceof SetCommand) {
                     SetCommand set = (SetCommand) command;
                     partData.put(set.getKey(), set);
                 }
+                //处理rm命令
                 if (command instanceof RmCommand) {
                     RmCommand rm = (RmCommand) command;
                     partData.put(rm.getKey(), rm);
